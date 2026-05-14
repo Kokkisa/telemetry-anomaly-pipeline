@@ -22,34 +22,133 @@ The raw stream has three problems that make it unusable without a pipeline:
 
 ## Architecture
 
+### Real-World Production Architecture
+*How this pipeline runs in a live industrial environment*
+
 ```
-Mass Flow Meter (Coriolis)
-         │
-         ▼
-   [ Kafka Topic ]           ← at-least-once delivery
-         │
-         ▼
-   [ Ingestor ]              ← parse JSON, validate all fields, reject malformed
-         │
-         ▼
-   [ Deduplicator ]          ← TTL-bounded seen-set, O(1) lookup, memory-capped
-         │
-         ▼
-   [ Anomaly Detector ]      ← per-record Z-score vs rolling 20-sample baseline
-         │
-         ▼
-   [ Window Aggregator ]     ← 1-min tumbling windows: mean / min / max / p95
-         │
-         ▼
-   [ Window Spike Detector ] ← compares window mean vs 30-window historical norm
-         │
-         ▼
-   Alerts  ──────────────────── downstream: PagerDuty / InfluxDB / TimescaleDB
-   Windows ─────────────────────────────────────────────── dashboard / BI layer
+  ┌─────────────────────────────────────────────────────────┐
+  │                    PLANT FLOOR                          │
+  │                                                         │
+  │  [MFM_KDL_INLET_01]  [MFM_RJY_XFER_01]  [MFM_MNG_*]  │
+  │   Coriolis Sensor      Coriolis Sensor    Coriolis ...  │
+  │   (pressure, temp,     (flow, density,    (pressure,    │
+  │    flow, density)       pressure, temp)    temp, flow)  │
+  └──────────┬──────────────────┬─────────────────┬────────┘
+             │                  │                 │
+             ▼                  ▼                 ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │              SCADA / IoT GATEWAY LAYER                  │
+  │   Converts raw sensor signals to structured JSON        │
+  │   Publishes to Kafka over MQTT / OPC-UA / Modbus        │
+  └─────────────────────────┬───────────────────────────────┘
+                            │  JSON messages, ~10 Hz per sensor
+                            ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │                  KAFKA BROKER                           │
+  │   Topic: lpg.mfm.telemetry.raw                         │
+  │   Partitioned by sensor_id                              │
+  │   Retention: 7 days  |  Replication factor: 3          │
+  │   Delivery guarantee: at-least-once                     │
+  └─────────────────────────┬───────────────────────────────┘
+                            │  Consumer group: telemetry-pipeline-v1
+                            ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │              THIS PIPELINE (ingestor.py)                │
+  │                                                         │
+  │  parse JSON → validate fields → reject malformed        │
+  │         ↓                         ↓                     │
+  │   TelemetryRecord           MalformedRecord             │
+  │         ↓                    logged + counted           │
+  │   [Deduplicator]                                        │
+  │   TTL seen-set (Redis in multi-instance prod)           │
+  │         ↓                                               │
+  │   [Anomaly Detector]  → Alert fired immediately         │
+  │   per-record Z-score                                    │
+  │         ↓                                               │
+  │   [Window Aggregator]                                   │
+  │   1-min tumbling windows                                │
+  │         ↓                                               │
+  │   [Window Spike Detector] → Alert on sustained drift    │
+  │   30-window historical norm                             │
+  └────────┬──────────────────────┬──────────────────────── ┘
+           │                      │
+           ▼                      ▼
+  ┌──────────────────┐  ┌────────────────────────────┐
+  │   ALERT SINK     │  │        DATA SINK            │
+  │  PagerDuty       │  │  TimescaleDB / InfluxDB     │
+  │  Slack / Email   │  │  Window summaries + alerts  │
+  └──────────────────┘  │  Grafana / Power BI         │
+                        │  Operations Dashboard        │
+                        └────────────────────────────┘
+```
+
+**Production config** — environment variables, broker address never in GitHub:
+```bash
+SIMULATE=false
+KAFKA_BROKER=kafka-prod.plant.internal:9092
+KAFKA_TOPIC=lpg.mfm.telemetry.raw
+KAFKA_GROUP_ID=telemetry-pipeline-v1
 ```
 
 ---
 
+### Demo / Portfolio Architecture
+*Runs locally — no Kafka broker, no external dependencies*
+
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │         BUILT-IN MFM SIMULATOR (ingestor.py)            │
+  │   Generates realistic Coriolis MFM data at 10 Hz        │
+  │   Injects: 4% malformed · 5% duplicates · 3% anomalies  │
+  │   Plants: KDL (Kondapalli) · RJY (Rajahmundry) · MNG    │
+  └─────────────────────────┬───────────────────────────────┘
+                            │  No Kafka broker needed
+                            ▼
+             [ Ingestor — parse + validate ]
+                            │
+                            ▼
+             [ Deduplicator — in-memory dict + deque ]
+                            │
+                            ▼
+             [ Anomaly Detector — rolling Z-score ]
+                            │
+                            ▼
+             [ Window Aggregator — 60s tumbling ]
+                            │
+                            ▼
+             [ Window Spike Detector ]
+                   ┌────────┴────────┐
+                   ▼                 ▼
+            Alerts → stdout     Windows → stdout
+       [CRITICAL] ZSCORE        [WINDOW] MFM_KDL_INLET_01
+       MFM_MNG_COMP_01          mean=11.243  p95=12.891
+       value=54.3  Z=+4.91σ     n=47  min=10.1  max=13.4
+```
+
+**Demo config:**
+```python
+simulate: bool = True   # flip to False + set KafkaConfig for real Kafka
+```
+
+**Run immediately:**
+```bash
+python main.py
+```
+
+---
+
+### Switching Demo to Production — 3 Steps, One File
+
+| Step | What changes | Location |
+|---|---|---|
+| 1 | `simulate = False` | `config.py` |
+| 2 | `bootstrap_servers` → real broker address | `config.py` → `KafkaConfig` |
+| 3 | `topic` → real topic name (agreed with SCADA team) | `config.py` → `KafkaConfig` |
+
+**Zero changes** to deduplicator, aggregator, anomaly detector, or pipeline logic.
+The pipeline is completely decoupled from the data source by design.
+
+---
 ## Sensor Configuration
 
 Sensors model three plants on the HPCL LPG distribution network:
@@ -125,6 +224,150 @@ Flag if |Z| > 3.0 (configurable)
 ### 4. Reliability — at-least-once + idempotent dedup = effectively exactly-once
 
 In Kafka mode, offsets are committed manually after successful processing. Combined with the deduplicator's TTL window, this gives effectively exactly-once semantics without requiring Kafka transactions — which have significant throughput overhead.
+
+---
+
+## Production Deployment Guide
+*Three-layer pattern to convert this prototype into a real production pipeline*
+
+This section documents every change needed to go from the demo simulator to a
+live industrial deployment receiving real Kafka telemetry. Nothing in the core
+pipeline logic changes — only configuration and infrastructure wiring.
+
+---
+
+### Layer 1 — The On/Off Switch
+
+In `config.py`, `PipelineConfig`:
+
+```python
+# DEMO (current)
+simulate: bool = True    # True = built-in MFM simulator | False = real Kafka data
+
+# PRODUCTION
+simulate: bool = False   # pipeline now reads from real Kafka broker
+```
+
+---
+
+### Layer 2 — Kafka Broker Configuration
+
+In `config.py`, `KafkaConfig` — point to your real broker and topic:
+
+```python
+# DEMO (current)
+@dataclass(frozen=True)
+class KafkaConfig:
+    bootstrap_servers: str = "localhost:9092"   # local placeholder
+    topic: str = "telemetry.raw"                # placeholder topic
+    group_id: str = "telemetry-pipeline-v1"
+    auto_offset_reset: str = "earliest"
+    enable_auto_commit: bool = False            # keep False — manual commit always
+    max_poll_records: int = 500
+    session_timeout_ms: int = 30_000
+
+# PRODUCTION — values provided by your Kafka/infrastructure team
+@dataclass(frozen=True)
+class KafkaConfig:
+    bootstrap_servers: str = "kafka-prod.plant.internal:9092"  # real broker
+    topic: str = "lpg.mfm.telemetry.raw"                       # agreed with SCADA team
+    group_id: str = "telemetry-pipeline-v1"                    # no change
+    auto_offset_reset: str = "earliest"                        # no change
+    enable_auto_commit: bool = False                           # never change this
+    max_poll_records: int = 500                                # tune based on throughput
+    session_timeout_ms: int = 30_000                          # no change
+```
+
+> **Note:** `enable_auto_commit` must always stay `False` in production.
+> Manual offset commit + deduplicator = effectively exactly-once semantics.
+> Auto-commit risks silent data loss on crash.
+
+---
+
+### Layer 3 — Environment Variables (never hardcode secrets in GitHub)
+
+In production, broker addresses, credentials, and topic names must never
+be hardcoded in source files that go into version control.
+
+**Step 1 — Update `config.py` to read from environment:**
+
+```python
+import os
+
+@dataclass(frozen=True)
+class KafkaConfig:
+    bootstrap_servers: str = os.getenv("KAFKA_BROKER", "localhost:9092")
+    topic: str = os.getenv("KAFKA_TOPIC", "telemetry.raw")
+    group_id: str = os.getenv("KAFKA_GROUP_ID", "telemetry-pipeline-v1")
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    ...
+    simulate: bool = os.getenv("SIMULATE", "true").lower() == "true"
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+```
+
+**Step 2 — Set environment variables on the production server:**
+
+```bash
+# On the production server / in your Docker container / Kubernetes ConfigMap
+export SIMULATE=false
+export KAFKA_BROKER=kafka-prod.plant.internal:9092
+export KAFKA_TOPIC=lpg.mfm.telemetry.raw
+export KAFKA_GROUP_ID=telemetry-pipeline-v1
+export LOG_LEVEL=INFO
+```
+
+**Step 3 — For Kubernetes deployment, use a ConfigMap:**
+
+```yaml
+# k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetry-pipeline-config
+data:
+  SIMULATE: "false"
+  KAFKA_BROKER: "kafka-prod.plant.internal:9092"
+  KAFKA_TOPIC: "lpg.mfm.telemetry.raw"
+  KAFKA_GROUP_ID: "telemetry-pipeline-v1"
+  LOG_LEVEL: "INFO"
+```
+
+---
+
+### Additional Production Upgrades (Beyond Config)
+
+These are architectural upgrades for high-scale deployments — not required
+for correctness, but important for resilience and scale:
+
+| Component | Demo (current) | Production upgrade | Why |
+|---|---|---|---|
+| **Deduplicator state** | In-memory dict+deque | Redis with TTL keys | Multiple consumer instances share dedup state |
+| **Aggregator state** | In-memory deque per sensor | Kafka Streams / Flink state store | Survives consumer restarts, no window data loss |
+| **Alert sink** | `print()` to stdout | PagerDuty + Slack webhooks | Real on-call alerting |
+| **Window sink** | `print()` to stdout | TimescaleDB / InfluxDB writer | Queryable history for dashboards |
+| **Schema validation** | Manual field checks in `parse_message()` | Avro + Schema Registry | Contract enforcement between SCADA publisher and pipeline consumer |
+| **Observability** | `logging` every 30s | Prometheus metrics + Grafana | Throughput, lag, alert rate, dedup rate — all queryable |
+| **Anomaly baseline** | Rolling Z-score from cold start | EWMA + periodic Isolation Forest retraining | Adapts to slow drift; catches multivariate anomalies |
+| **Scaling** | Single process | Kafka partition-per-sensor + N consumer instances | Linear horizontal scale with no shared state |
+
+---
+
+### What Never Changes
+
+Regardless of whether you are in demo or full production scale —
+the following components require **zero modifications**:
+
+- `models.py` — data shapes are environment-agnostic
+- `deduplicator.py` — TTL logic is identical (only backing store changes)
+- `aggregator.py` — window logic is identical (only state persistence changes)
+- `anomaly.py` — Z-score detection logic is identical
+- `pipeline.py` — orchestration flow is identical
+- `tests.py` — all 23 tests remain valid against production logic
+
+The core pipeline is **infrastructure-agnostic by design.**
+Only the edges (data source, state store, alert/window sinks) are swappable.
 
 ---
 
