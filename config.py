@@ -44,7 +44,7 @@ class PipelineConfig:
     aggregation: AggregationConfig = AggregationConfig()
     anomaly: AnomalyConfig = AnomalyConfig()
     log_level: str = "INFO"
-    simulate: bool = True                   # True = use built-in data simulator
+    simulate: bool = True                   # True = use built-in data simulator | False = for Real Kafka Data
 
 
 # Singleton
