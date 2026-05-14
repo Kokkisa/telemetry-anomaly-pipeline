@@ -1,0 +1,53 @@
+========================================================================
+  LPG PIPELINE TELEMETRY — Mass Flow Meter Anomaly Detection Demo
+  Sensors: KDL (Kondapalli) · RJY (Rajahmundry) · MNG (Mangalore)
+  Simulated at 20 Hz | Window: 8s | Z-threshold: 3.0σ
+========================================================================
+
+  [MALFORMED]  JSON parse error: Expecting value: line 1 column 1 (char 0)
+  [DUPLICATE]  msg_id=10bec7ca-d350-4cc0...  sensor=MFM_KDL_INLET_01
+  [DUPLICATE]  msg_id=8f12c9bd-1d9e-4526...  sensor=MFM_KDL_INLET_01
+  [DUPLICATE]  msg_id=8f12c9bd-1d9e-4526...  sensor=MFM_KDL_INLET_01
+  [MALFORMED]  Non-numeric value: None
+  [DUPLICATE]  msg_id=8a70021b-3c96-42e5...  sensor=MFM_KDL_FILL_01
+  [DUPLICATE]  msg_id=6089f5d0-97e1-4a7c...  sensor=MFM_RJY_XFER_01
+  [DUPLICATE]  msg_id=a061fdfd-c76d-48e8...  sensor=MFM_RJY_XFER_01
+  [MALFORMED]  Unparseable timestamp: 'not-a-date'
+  [DUPLICATE]  msg_id=f33c7ae8-bf34-4e6d...  sensor=MFM_RJY_XFER_01
+  [DUPLICATE]  msg_id=4b22f3d7-1dae-41ec...  sensor=MFM_MNG_COMP_01
+  [DUPLICATE]  msg_id=7235a6c6-fc3c-4d1f...  sensor=MFM_MNG_COMP_01
+  [MALFORMED]  JSON parse error: Expecting value: line 1 column 1 (char 0)
+  [MALFORMED]  Non-numeric value: None
+  [MALFORMED]  JSON parse error: Expecting value: line 1 column 1 (char 0)
+  [MALFORMED]  Non-numeric value: None
+  [MALFORMED]  Missing fields: {'timestamp', 'value', 'unit', 'sensor_id', 'metric_
+  [MALFORMED]  Missing fields: {'timestamp', 'unit', 'metric_name', 'message_id'}
+  [MALFORMED]  Unparseable timestamp: 'not-a-date'
+  [WINDOW] MFM_MNG_OUTLET_01      mass_flow_rate_kgh       n= 17  mean=  3937.610  p95=  4015.249  min=  3709.059  max=  4017.054
+  [MALFORMED]  JSON parse error: Expecting value: line 1 column 1 (char 0)
+  [DUPLICATE]  msg_id=30dee7e0-7ce5-4a84...  sensor=MFM_KDL_FILL_01
+  [DUPLICATE]  msg_id=0a4675ff-850a-4686...  sensor=MFM_RJY_XFER_01
+  [ALERT] WARNING  MFM_MNG_OUTLET_01      mass_flow_rate_kgh       value=  4183.778  Z=+3.65σ
+  [ALERT] WARNING  MFM_MNG_OUTLET_01      pressure_bar             value=     9.856  Z=+4.00σ
+  [DUPLICATE]  msg_id=311715c5-0a93-4274...  sensor=MFM_KDL_INLET_01
+  [DUPLICATE]  msg_id=063c3a84-2e82-457b...  sensor=MFM_KDL_FILL_01
+  [DUPLICATE]  msg_id=ec54900a-5996-41c7...  sensor=MFM_RJY_XFER_01
+  [DUPLICATE]  msg_id=30dee7e0-7ce5-4a84...  sensor=MFM_RJY_XFER_01
+  [ALERT] CRITICAL MFM_MNG_COMP_01        temperature_c            value=    54.308  Z=+4.91σ
+  [DUPLICATE]  msg_id=0554e68e-08db-4fb2...  sensor=MFM_MNG_COMP_01
+  [MALFORMED]  Missing fields: {'timestamp', 'value', 'unit', 'sensor_id', 'metric_
+  [ALERT] CRITICAL MFM_KDL_INLET_01       mass_flow_rate_kgh       value=  5092.076  Z=+5.62σ
+  [ALERT] CRITICAL MFM_KDL_INLET_01       pressure_bar             value=    10.114  Z=-7.23σ
+  [ALERT] WARNING  MFM_RJY_XFER_01        temperature_c            value=    27.621  Z=-3.45σ
+  [MALFORMED]  Missing fields: {'timestamp', 'value', 'unit', 'sensor_id', 'metric_
+  [ALERT] WARNING  MFM_KDL_INLET_01       temperature_c            value=    40.143  Z=+3.36σ
+
+========================================================================
+  PIPELINE SUMMARY
+  Total received : 300
+  Processed clean: 271
+  Malformed drop : 13  (SCADA comm errors / truncated packets)
+  Duplicates drop: 16  (Kafka at-least-once redelivery)
+  Anomaly alerts : 7
+  Windows flushed: 1
+========================================================================

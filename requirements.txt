@@ -1,0 +1,11 @@
+# Core pipeline — stdlib only, no external dependencies required
+# Run: python main.py   (simulator mode, works immediately)
+
+# Optional: real Kafka broker connectivity
+confluent-kafka>=2.3.0
+
+# Optional: Bloom filter for ultra-high-cardinality deduplication (>10M msg/sec)
+pybloom-live>=4.0.0
+
+# Development / testing
+pytest>=7.0.0
