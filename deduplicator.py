@@ -1,7 +1,7 @@
 """
 deduplicator.py — Sliding-window deduplication using a TTL-bounded seen-set.
 
-Design decisions (explain these in interview):
+Design decisions :
   - TTL eviction instead of unbounded set: memory-safe under high cardinality
   - Insertion-order deque for O(1) eviction of expired entries
   - O(1) average-case lookup via dict (hash map under the hood)
