@@ -154,7 +154,7 @@ class WindowAggregator:
             }
 
 # ---------------------------------------------------------------------------
-# Interview talking point: numpy / pandas path
+# numpy / pandas path
 # ---------------------------------------------------------------------------
 # For very large windows or vectorised operations, replace the pure-Python
 # stats with:
