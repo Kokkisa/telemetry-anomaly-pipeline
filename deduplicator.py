@@ -109,7 +109,7 @@ class Deduplicator:
 
 
 # ---------------------------------------------------------------------------
-# Interview talking point: Bloom Filter alternative
+# Bloom Filter alternative
 # ---------------------------------------------------------------------------
 # For cardinalities > 10M msg/sec where even the dict becomes large:
 #
